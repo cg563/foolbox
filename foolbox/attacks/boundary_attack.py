@@ -53,8 +53,7 @@ class BoundaryAttack(Attack):
     ----------
     .. [1] Wieland Brendel (*), Jonas Rauber (*), Matthias Bethge,
            "Decision-Based Adversarial Attacks: Reliable Attacks
-           Against Black-Box Machine Learning Models",
-           https://arxiv.org/abs/1712.04248
+           Against Black-Box Machine Learning Models"
 
     """
 
@@ -71,6 +70,7 @@ class BoundaryAttack(Attack):
             starting_point=None,
             initialization_attack=None,
             log_every_n_steps=1,
+            save_every_n_steps=1000,
             spherical_step=1e-2,
             source_step=1e-2,
             step_adaptation=1.5,
@@ -141,6 +141,7 @@ class BoundaryAttack(Attack):
         # make some of the parameters available to other methods without
         # the need to explicitly pass them
         self.log_every_n_steps = log_every_n_steps
+        self.save_every_n_steps = save_every_n_steps
         self._starting_point = starting_point
         self._initialization_attack = initialization_attack
         self.batch_size = batch_size
@@ -150,6 +151,8 @@ class BoundaryAttack(Attack):
         self.source_step = source_step
         self.internal_dtype = internal_dtype
         self.verbose = verbose
+        self.intermediate = None
+        self.distances = []
 
         if alternative_generator:
             self.generate_candidate = self.generate_candidate_alternative
@@ -323,7 +326,8 @@ class BoundaryAttack(Attack):
         generation_args = None
 
         # log starting point
-        self.log_step(0, distance)
+        #self.log_step(0, distance)
+        #self.save_intermediate(0, a.image)
 
         initial_convergence_steps = 100
         convergence_steps = initial_convergence_steps
@@ -337,29 +341,31 @@ class BoundaryAttack(Attack):
             # ===========================================================
 
             check_strict = convergence_steps == initial_convergence_steps
-            if self.has_converged(check_strict):
-                self.log_step(step - 1, distance, always=True)
-                if resetted:
-                    self.printv(
-                        'Looks like attack has converged after {} steps,'
-                        ' {} remaining'.format(step, convergence_steps))
-                    convergence_steps -= 1
-                    if convergence_steps == 0:
-                        break
-                else:
-                    resetted = True
-                    self.printv(
-                        'Looks like attack has converged after' +
-                        ' {} steps'.format(step) +
-                        ' for the first time. Resetting steps to be sure.')
-                    self.spherical_step = 1e-2
-                    self.source_step = 1e-2
-            elif (convergence_steps <
-                    initial_convergence_steps):  # pragma: no cover
-                self.log_step(step - 1, distance, always=True)
-                warnings.warn('Attack has not converged!')
-                convergence_steps = initial_convergence_steps
-                resetted = False
+            #if self.has_converged(check_strict):
+            #    self.log_step(step - 1, distance, always=True)
+            #    self.save_intermediate(step - 1, a.image, always=True)
+            #    if resetted:
+            #        self.printv(
+            #            'Looks like attack has converged after {} steps,'
+            #            ' {} remaining'.format(step, convergence_steps))
+            #        convergence_steps -= 1
+            #        if convergence_steps == 0:
+            #            break
+            #    else:
+            #        resetted = True
+            #        self.printv(
+            #            'Looks like attack has converged after' +
+            #            ' {} steps'.format(step) +
+            #            ' for the first time. Resetting steps to be sure.')
+            #        self.spherical_step = 1e-2
+            #        self.source_step = 1e-2
+            #elif (convergence_steps <
+            #        initial_convergence_steps):  # pragma: no cover
+            #    self.log_step(step - 1, distance, always=True)
+            #    self.save_intermediate(step - 1, a.image, always=True)
+            #    warnings.warn('Attack has not converged!')
+            #    convergence_steps = initial_convergence_steps
+            #    resetted = False
 
             # ===========================================================
             # Determine optimal batch size
@@ -598,6 +604,7 @@ class BoundaryAttack(Attack):
             t_step = time.time() - t_step
             message += ' (took {:.5f} seconds)'.format(t_step)
             self.log_step(step, distance, message)
+            self.save_intermediate(step, a.image)
             sys.stdout.flush()
 
         # ===========================================================
@@ -673,6 +680,15 @@ class BoundaryAttack(Attack):
             self.spherical_step,
             self.source_step,
             message))
+        self.distances.append(distance.value)
+
+    def save_intermediate(self, step, image, always=False):
+        if not always and step % self.save_every_n_steps != 0:
+            return
+        if self.intermediate is None:
+            self.intermediate = np.expand_dims(image, 0)
+        else:
+            self.intermediate = np.concatenate((self.intermediate, np.expand_dims(image, 0)))
 
     @staticmethod
     def prepare_generate_candidates(original, perturbed):

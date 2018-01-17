@@ -157,7 +157,7 @@ class Adversarial(object):
 
         """
         is_adversarial = self.__criterion.is_adversarial(
-            predictions, self.__original_class)
+            predictions, self.__original_class)[0]
         if is_adversarial:
             is_best, distance = self.__new_adversarial(image)
         else:
